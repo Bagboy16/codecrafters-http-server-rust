@@ -65,6 +65,24 @@ fn parse_http_request(request: &str) -> Option<HttpRequest> {
     })
 }
 
+fn handle_response(request: HttpRequest) -> String {
+    let http_200_ok: &str = "HTTP/1.1 200 OK\r\n"; // create a response to send back to the client. It is a string slice of type &str (a reference to a string) that contains the response headers.
+    let http_400_not_found: &str = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
+
+    if request.path.contains("/echo/") { // Test 4: Respond with content for the /echo/ path
+        let res_data: &str = &request.path.trim().replace("/echo/", "");
+        let content_length: &str = &format!("Content-Length: {}\r\n", res_data.len());
+        let content_type: &str = "Content-Type: text/plain\r\n";
+        let response: String = format!("{}{}{}\r\n{}", http_200_ok,content_type, content_length, res_data);
+        return response;
+    }
+    if request.path == "/" { // Test 2: Respond with 200 OK for the root path
+        let response: String = format!("{}\r\n", http_200_ok);
+        return response;
+    }
+    http_400_not_found.to_string() //Test 3: Respond with 404 NOT FOUND for any other path
+}
+
 fn handle_connection(mut stream: TcpStream) {
     let mut buffer: [u8; 1024] = [0; 1024]; // create a buffer to hold the incoming data, it is an array of 1024 bytes of type u8 (unsigned 8-bit integer)
     stream.read(&mut buffer).unwrap(); // read the incoming data into the buffer. &mut is used to pass a mutable reference to the buffer so that it can be modified
@@ -73,15 +91,10 @@ fn handle_connection(mut stream: TcpStream) {
     println!("Method: {}", request.method.to_string()); // print the request to the console
     println!("Path: {}", request.path);
     println!("Version: {}", request.version);
-    let response: &str = "HTTP/1.1 200 OK\r\n\r\n"; // create a response to send back to the client. It is a string slice of type &str (a reference to a string) that contains the response headers.
-    let not_found: &str = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
 
-    if request.path == "/" {
-        stream.write(response.as_bytes()).unwrap(); // write the response to the stream. as_bytes() is used to convert the response to a byte slice of type &[u8]
-    } else {
-        stream.write(not_found.as_bytes()).unwrap();
-    }
-
+    let response: String = handle_response(request); // handle the request and get the response
+    println!("Response: {}", response); // print the response to the console
+    stream.write(response.as_bytes()).unwrap(); // write the response to the stream. as_bytes() is used to convert the response to a byte slice of type &[u8]    
     stream.flush().unwrap(); // flush the stream to ensure that the response is sent. unwrap() is used to panic if the flush fails
 }
 
