@@ -1,13 +1,11 @@
 // Uncomment this block to pass the first stage
 use std::{
+    env, fs,
     io::{Read, Write},
     net::{TcpListener, TcpStream},
-    thread,
-    env,
-    fs,
     path::Path,
+    thread,
 };
-
 
 enum HttpMethod {
     GET,
@@ -58,17 +56,24 @@ struct HttpRequest {
     path: String,
     version: String,
     headers: Vec<String>,
+    body: String,
 }
 
 fn parse_http_request(request: &str) -> Option<HttpRequest> {
-    let parts: Vec<&str> = request.split("r\n\r\n").collect();
+    let parts: Vec<&str> = request.split("\r\n\r\n").collect();
+    println!("{:?}", parts);
     let header_lines: Vec<&str> = parts.get(0)?.split("\r\n").collect();
     let req_line: Vec<&str> = header_lines.get(0)?.split_whitespace().collect();
+    let mut body: &str = "";
+    if parts.len() > 1 {
+        body = parts.get(1)?;
+    }
     Some(HttpRequest {
         method: HttpMethod::from_str(req_line.get(0)?),
         path: req_line.get(1)?.to_string(),
         version: req_line.get(2)?.to_string(),
         headers: header_lines[1..].iter().map(|s| s.to_string()).collect(),
+        body: body.to_string(),
     })
 }
 
@@ -84,6 +89,7 @@ fn handle_response(request: HttpRequest) -> String {
     }
 
     let http_200_ok: &str = "HTTP/1.1 200 OK\r\n"; // create a response to send back to the client. It is a string slice of type &str (a reference to a string) that contains the response headers.
+    let http_201_created: &str = "HTTP/1.1 201 CREATED\r\n\r\n";
     let http_400_not_found: &str = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
 
     if request.path.contains("/echo/") {
@@ -113,23 +119,37 @@ fn handle_response(request: HttpRequest) -> String {
         return response;
     }
     if directory {
-        let fullpath: String = format!("{}{}", directory_path, request.path.trim().replace("/files/", ""));
+        let fullpath: String = format!(
+            "{}{}",
+            directory_path,
+            request.path.trim().replace("/files/", "")
+        );
         let path: &Path = Path::new(&fullpath);
-        if path.exists(){
-            if path.is_file(){
-                let file_buffer: Vec<u8> = fs::read(fullpath).unwrap();
-                let content_length: &str = &format!("Content-Length: {}\r\n", file_buffer.len());
-                let content_type: &str = "Content-Type: application/octet-stream\r\n";
-                let response: String = format!(
-                    "{}{}{}\r\n{}",
-                    http_200_ok, content_type, content_length, String::from_utf8_lossy(&file_buffer)
-                );
-                return response;
+        if request.method.to_string() == "GET" {
+            if path.exists() {
+                if path.is_file() {
+                    let file_buffer: Vec<u8> = fs::read(fullpath).unwrap();
+                    let content_length: &str =
+                        &format!("Content-Length: {}\r\n", file_buffer.len());
+                    let content_type: &str = "Content-Type: application/octet-stream\r\n";
+                    let response: String = format!(
+                        "{}{}{}\r\n{}",
+                        http_200_ok,
+                        content_type,
+                        content_length,
+                        String::from_utf8_lossy(&file_buffer)
+                    );
+                    return response;
+                } else {
+                    return http_400_not_found.to_string();
+                }
             } else {
                 return http_400_not_found.to_string();
             }
-        } else {
-            return http_400_not_found.to_string();
+        } else if request.method.to_string() == "POST" {
+            let mut file = fs::File::create(fullpath).unwrap();
+            file.write_all(request.body.as_bytes()).unwrap();
+            return http_201_created.to_string();
         }
     }
     if request.path == "/" {
@@ -142,9 +162,9 @@ fn handle_response(request: HttpRequest) -> String {
 
 fn handle_connection(mut stream: TcpStream) {
     let mut buffer: [u8; 1024] = [0; 1024]; // create a buffer to hold the incoming data, it is an array of 1024 bytes of type u8 (unsigned 8-bit integer)
-    stream.read(&mut buffer).unwrap(); // read the incoming data into the buffer. &mut is used to pass a mutable reference to the buffer so that it can be modified
-
-    let request: HttpRequest = parse_http_request(&String::from_utf8_lossy(&buffer)).unwrap(); // parse the request from the buffer. from_utf8_lossy() is used to convert the buffer to a string. It is used because the parse_http_request() function expects a string slice of type &str
+    let bytes_read: usize = stream.read(&mut buffer).unwrap(); // read the incoming data into the buffer. &mut is used to pass a mutable reference to the buffer so that it can be modified
+    println!("BUffer: {:?}", buffer);
+    let request: HttpRequest = parse_http_request(&String::from_utf8_lossy(&buffer[..bytes_read])).unwrap(); // parse the request from the buffer. from_utf8_lossy() is used to convert the buffer to a string. It is used because the parse_http_request() function expects a string slice of type &str
     println!("Method: {}", request.method.to_string()); // print the request to the console
     println!("Path: {}", request.path);
     println!("Version: {}", request.version);
@@ -159,7 +179,6 @@ fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     println!("Logs from your program will appear here!");
 
-
     // Create a listener bound to
     // unwrap() is used to panic if the listener can't be created
     // panic! is a macro that prints an error message and exits the program
@@ -171,7 +190,8 @@ fn main() {
         // match is used to handle the Result returned by incoming()
         // if the Result is Ok, the stream is printed
         // if the Result is Err, the error is printed
-        thread::spawn(|| match stream { //Test 6: Spawn a new thread for each incoming connection
+        thread::spawn(|| match stream {
+            //Test 6: Spawn a new thread for each incoming connection
             Ok(stream) => {
                 handle_connection(stream);
             }
