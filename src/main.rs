@@ -52,6 +52,7 @@ struct HttpRequest {
     method: HttpMethod,
     path: String,
     version: String,
+    headers: Vec<String>,
 }
 
 fn parse_http_request(request: &str) -> Option<HttpRequest> {
@@ -62,6 +63,7 @@ fn parse_http_request(request: &str) -> Option<HttpRequest> {
         method: HttpMethod::from_str(req_line.get(0)?),
         path: req_line.get(1)?.to_string(),
         version: req_line.get(2)?.to_string(),
+        headers: header_lines[1..].iter().map(|s| s.to_string()).collect(),
     })
 }
 
@@ -74,6 +76,14 @@ fn handle_response(request: HttpRequest) -> String {
         let content_length: &str = &format!("Content-Length: {}\r\n", res_data.len());
         let content_type: &str = "Content-Type: text/plain\r\n";
         let response: String = format!("{}{}{}\r\n{}", http_200_ok,content_type, content_length, res_data);
+        return response;
+    }
+    if request.path == "/user-agent" {
+        let user_agent: &str = request.headers.iter().find(|s| s.contains("User-Agent: ")).unwrap();
+        let res_data: &str = &user_agent.trim().replace("User-Agent: ", "");
+        let content_length: &str = &format!("Content-Length: {}\r\n", res_data.len());
+        let content_type: &str = "Content-Type: text/plain\r\n";
+        let response: String = format!("{}{}{}\r\n{}", http_200_ok, content_type, content_length, res_data);
         return response;
     }
     if request.path == "/" { // Test 2: Respond with 200 OK for the root path
