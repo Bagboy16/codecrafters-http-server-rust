@@ -2,6 +2,7 @@
 use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
+    thread,
 };
 
 enum HttpMethod {
@@ -71,22 +72,34 @@ fn handle_response(request: HttpRequest) -> String {
     let http_200_ok: &str = "HTTP/1.1 200 OK\r\n"; // create a response to send back to the client. It is a string slice of type &str (a reference to a string) that contains the response headers.
     let http_400_not_found: &str = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
 
-    if request.path.contains("/echo/") { // Test 4: Respond with content for the /echo/ path
+    if request.path.contains("/echo/") {
+        // Test 4: Respond with content for the /echo/ path
         let res_data: &str = &request.path.trim().replace("/echo/", "");
         let content_length: &str = &format!("Content-Length: {}\r\n", res_data.len());
         let content_type: &str = "Content-Type: text/plain\r\n";
-        let response: String = format!("{}{}{}\r\n{}", http_200_ok,content_type, content_length, res_data);
+        let response: String = format!(
+            "{}{}{}\r\n{}",
+            http_200_ok, content_type, content_length, res_data
+        );
         return response;
     }
     if request.path == "/user-agent" {
-        let user_agent: &str = request.headers.iter().find(|s| s.contains("User-Agent: ")).unwrap();
+        let user_agent: &str = request
+            .headers
+            .iter()
+            .find(|s| s.contains("User-Agent: "))
+            .unwrap();
         let res_data: &str = &user_agent.trim().replace("User-Agent: ", "");
         let content_length: &str = &format!("Content-Length: {}\r\n", res_data.len());
         let content_type: &str = "Content-Type: text/plain\r\n";
-        let response: String = format!("{}{}{}\r\n{}", http_200_ok, content_type, content_length, res_data);
+        let response: String = format!(
+            "{}{}{}\r\n{}",
+            http_200_ok, content_type, content_length, res_data
+        );
         return response;
     }
-    if request.path == "/" { // Test 2: Respond with 200 OK for the root path
+    if request.path == "/" {
+        // Test 2: Respond with 200 OK for the root path
         let response: String = format!("{}\r\n", http_200_ok);
         return response;
     }
@@ -104,7 +117,7 @@ fn handle_connection(mut stream: TcpStream) {
 
     let response: String = handle_response(request); // handle the request and get the response
     println!("Response: {}", response); // print the response to the console
-    stream.write(response.as_bytes()).unwrap(); // write the response to the stream. as_bytes() is used to convert the response to a byte slice of type &[u8]    
+    stream.write(response.as_bytes()).unwrap(); // write the response to the stream. as_bytes() is used to convert the response to a byte slice of type &[u8]
     stream.flush().unwrap(); // flush the stream to ensure that the response is sent. unwrap() is used to panic if the flush fails
 }
 
@@ -123,13 +136,13 @@ fn main() {
         // match is used to handle the Result returned by incoming()
         // if the Result is Ok, the stream is printed
         // if the Result is Err, the error is printed
-        match stream {
-            Ok(_stream) => {
-                handle_connection(_stream);
+        thread::spawn(|| match stream {
+            Ok(stream) => {
+                handle_connection(stream);
             }
             Err(e) => {
                 println!("error: {}", e);
             }
-        }
+        });
     }
 }
