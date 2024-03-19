@@ -3,7 +3,11 @@ use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
     thread,
+    env,
+    fs,
+    path::Path,
 };
+
 
 enum HttpMethod {
     GET,
@@ -69,6 +73,16 @@ fn parse_http_request(request: &str) -> Option<HttpRequest> {
 }
 
 fn handle_response(request: HttpRequest) -> String {
+    let mut directory: bool = false;
+    let mut directory_path: &str = "";
+
+    let args: Vec<String> = env::args().collect();
+
+    if args.contains(&String::from("--directory")) {
+        directory = true;
+        directory_path = &args[args.iter().position(|r| r == "--directory").unwrap() + 1];
+    }
+
     let http_200_ok: &str = "HTTP/1.1 200 OK\r\n"; // create a response to send back to the client. It is a string slice of type &str (a reference to a string) that contains the response headers.
     let http_400_not_found: &str = "HTTP/1.1 404 NOT FOUND\r\n\r\n";
 
@@ -98,6 +112,26 @@ fn handle_response(request: HttpRequest) -> String {
         );
         return response;
     }
+    if directory {
+        let fullpath: String = format!("{}{}", directory_path, request.path.trim().replace("/files/", ""));
+        let path: &Path = Path::new(&fullpath);
+        if path.exists(){
+            if path.is_file(){
+                let file_buffer: Vec<u8> = fs::read(fullpath).unwrap();
+                let content_length: &str = &format!("Content-Length: {}\r\n", file_buffer.len());
+                let content_type: &str = "Content-Type: application/octet-stream\r\n";
+                let response: String = format!(
+                    "{}{}{}\r\n{}",
+                    http_200_ok, content_type, content_length, String::from_utf8_lossy(&file_buffer)
+                );
+                return response;
+            } else {
+                return http_400_not_found.to_string();
+            }
+        } else {
+            return http_400_not_found.to_string();
+        }
+    }
     if request.path == "/" {
         // Test 2: Respond with 200 OK for the root path
         let response: String = format!("{}\r\n", http_200_ok);
@@ -125,6 +159,7 @@ fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     println!("Logs from your program will appear here!");
 
+
     // Create a listener bound to
     // unwrap() is used to panic if the listener can't be created
     // panic! is a macro that prints an error message and exits the program
@@ -136,7 +171,7 @@ fn main() {
         // match is used to handle the Result returned by incoming()
         // if the Result is Ok, the stream is printed
         // if the Result is Err, the error is printed
-        thread::spawn(|| match stream {
+        thread::spawn(|| match stream { //Test 6: Spawn a new thread for each incoming connection
             Ok(stream) => {
                 handle_connection(stream);
             }
